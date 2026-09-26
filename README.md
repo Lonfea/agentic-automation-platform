@@ -1,30 +1,82 @@
-# Agentic Automation Pipeline
+# Agentic Automation Platform
 
-A webhook-driven asynchronous execution service with idempotency, Celery workers, bounded exponential backoff, late acknowledgements, and a dead-letter queue.
+[![CI](https://github.com/Lonfea/agentic-automation-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Lonfea/agentic-automation-platform/actions/workflows/ci.yml)
+![FastAPI](https://img.shields.io/badge/API-FastAPI-009688)
+![Celery](https://img.shields.io/badge/Workers-Celery-37814A)
+![Redis](https://img.shields.io/badge/Broker-Redis-DC382D)
+![Reliability](https://img.shields.io/badge/Pattern-Idempotent%20Async%20Jobs-blue)
 
-## Delivery path
+A webhook-driven asynchronous execution service designed around the failure modes that matter in production automation: duplicate delivery, worker crashes, transient dependency failures, retry storms and permanently failed jobs.
 
-Webhook -> idempotency claim -> Celery queue -> worker -> success or retry -> dead-letter queue after retry exhaustion.
+## System architecture
 
-## Reliability properties
+```mermaid
+flowchart LR
+    EXT[External System] -->|Webhook| API[FastAPI]
+    API --> ID{Idempotency Store}
+    ID -->|duplicate| DUP[Return existing acceptance]
+    ID -->|new| Q[(Redis / Celery Queue)]
+    Q --> W[Automation Worker]
+    W -->|success| DONE[Completed]
+    W -->|transient failure| RETRY[Exponential Backoff]
+    RETRY --> W
+    W -->|retries exhausted| DLQ[(Dead-Letter Queue)]
+    DLQ --> DW[DLQ Worker / Inspection]
+```
 
-- duplicate webhook deliveries with the same key and payload are accepted without creating another task;
-- reusing the same idempotency key for a different payload returns a conflict;
-- tasks acknowledge late so a worker crash does not silently mark unfinished work complete;
-- transient dependency errors use bounded exponential backoff;
-- exhausted tasks are handed to a dedicated dead-letter queue.
+## Retry lifecycle
 
-## Run
+```mermaid
+stateDiagram-v2
+    [*] --> Accepted
+    Accepted --> Queued
+    Queued --> Processing
+    Processing --> Completed: success
+    Processing --> Retrying: transient failure
+    Retrying --> Processing: backoff elapsed
+    Retrying --> DeadLettered: retry budget exhausted
+    Completed --> [*]
+    DeadLettered --> [*]
+```
 
-    docker compose up --build
+## Reliability guarantees demonstrated
 
-Then POST an event with an `Idempotency-Key` header to `/webhooks/events`.
+- **Idempotency:** same key + same payload does not enqueue duplicate work.
+- **Conflict detection:** same key + different payload is rejected.
+- **Late acknowledgement:** unfinished work is not silently acknowledged when a worker dies.
+- **Bounded exponential backoff:** transient errors retry without immediate hammering.
+- **Dead-letter handling:** permanently failing jobs move to a dedicated queue.
+- **Separate workers:** normal automation and dead-letter processing are operationally distinct.
 
-## Production upgrades
+## Run locally
+
+```bash
+git clone https://github.com/Lonfea/agentic-automation-platform.git
+cd agentic-automation-platform
+docker compose up --build
+```
+
+Then send an event:
+
+```bash
+curl -X POST http://localhost:8000/webhooks/events \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-123" \
+  -d '{"event_id":"evt-123","event_type":"report.generate","payload":{"report_id":"r-42"}}'
+```
+
+## What this demonstrates
+
+Async API design, Celery worker architecture, webhook semantics, idempotency, failure recovery and explicit dead-letter behavior—the infrastructure needed to make agentic workflows dependable outside a notebook.
+
+## Production roadmap
 
 - signed webhook verification;
-- transactional outbox for downstream effects;
-- persistent DLQ inspection/replay UI;
-- OpenTelemetry trace propagation from webhook to worker;
-- Redis Cluster or managed broker;
-- workflow-specific compensation logic.
+- transactional outbox;
+- persistent DLQ replay/inspection UI;
+- OpenTelemetry trace propagation;
+- managed/clustered broker;
+- workflow compensation logic;
+- per-workflow concurrency controls.
+
+> No throughput or reliability percentage is claimed until the system is load-tested under a defined workload.
