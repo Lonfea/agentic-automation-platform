@@ -10,33 +10,33 @@ A webhook-driven asynchronous execution service designed around the failure mode
 
 ## System architecture
 
-```mermaid
+```text
 flowchart LR
-    EXT[External System] -->|Webhook| API[FastAPI]
-    API --> ID{Idempotency Store}
-    ID -->|duplicate| DUP[Return existing acceptance]
-    ID -->|new| Q[(Redis / Celery Queue)]
-    Q --> W[Automation Worker]
-    W -->|success| DONE[Completed]
-    W -->|transient failure| RETRY[Exponential Backoff]
-    RETRY --> W
-    W -->|retries exhausted| DLQ[(Dead-Letter Queue)]
-    DLQ --> DW[DLQ Worker / Inspection]
+EXT[External System] -->|Webhook| API[FastAPI]
+API --> ID{Idempotency Store}
+ID -->|duplicate| DUP[Return existing acceptance]
+ID -->|new| Q[(Redis / Celery Queue)]
+Q --> W[Automation Worker]
+W -->|success| DONE[Completed]
+W -->|transient failure| RETRY[Exponential Backoff]
+RETRY --> W
+W -->|retries exhausted| DLQ[(Dead-Letter Queue)]
+DLQ --> DW[DLQ Worker / Inspection] 
 ```
 
 ## Retry lifecycle
 
-```mermaid
+```text
 stateDiagram-v2
-    [*] --> Accepted
-    Accepted --> Queued
-    Queued --> Processing
-    Processing --> Completed: success
-    Processing --> Retrying: transient failure
-    Retrying --> Processing: backoff elapsed
-    Retrying --> DeadLettered: retry budget exhausted
-    Completed --> [*]
-    DeadLettered --> [*]
+[*] --> Accepted
+Accepted --> Queued
+Queued --> Processing
+Processing --> Completed: success
+Processing --> Retrying: transient failure
+Retrying --> Processing: backoff elapsed
+Retrying --> DeadLettered: retry budget exhausted
+Completed --> [*]
+DeadLettered --> [*] 
 ```
 
 ## Reliability guarantees demonstrated
