@@ -6,6 +6,9 @@
 ![Redis](https://img.shields.io/badge/Broker-Redis-DC382D)
 ![Reliability](https://img.shields.io/badge/Pattern-Idempotent%20Async%20Jobs-blue)
 
+
+<p align="center"><img src="docs/architecture.svg" alt="agentic-automation-platform architecture" width="100%"></p>
+
 A webhook-driven asynchronous execution service designed around the failure modes that matter in production automation: duplicate delivery, worker crashes, transient dependency failures, retry storms and permanently failed jobs.
 
 ## System architecture
